@@ -3,7 +3,7 @@ from math import ceil
 import matplotlib.pyplot as plt
 from scipy.ndimage import map_coordinates
 import random
-import plotly.graph_objects as go
+# import plotly.graph_objects as go
 
 
 def get_transformed_pixels_coords(I, H, shift=None):
