@@ -3,7 +3,7 @@ import random
 import math
 import sys
 from operator import itemgetter
-import plotly.graph_objects as go
+# import plotly.graph_objects as go
 
 
 def Normalization(x):
