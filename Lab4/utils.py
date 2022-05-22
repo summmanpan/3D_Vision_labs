@@ -18,7 +18,7 @@ def line_draw(line, canv, size):
     else:
         beg = (0, get_y(0))
         end = (w, get_y(w))
-    canv.line([beg, end], width=4)
+    canv.line([beg, end], width=8)
 
 
 def plot_img(img, do_not_use=[0]):
