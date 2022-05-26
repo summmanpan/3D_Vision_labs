@@ -53,3 +53,37 @@ def plot_camera(P, w, h, fig, legend, scale=1):
     fig.add_trace(go.Scatter3d(x=x, y=z, z=-y, mode='lines',name=legend))
     
     return
+
+# Compute the Image of the Absolute Conic
+def compute_img_abs_conic(N,H, start_N = 1):
+    A = np.zeros((2*N, 6))
+
+    for n in range(start_N, N + start_N):
+        i = n-start_N
+        h = H[i]
+        A[2*i-1, :] = np.array([h[0,0]*h[0,1], h[0,0]*h[1,1] + h[1,0]*h[0,1], h[0,0]*h[2,1] + h[2,0]*h[0,1], h[1,0]*h[1,1], h[1,0]*h[2,1] + h[2,0]*h[1,1], h[2,0]*h[2,1] ])
+        A[2*i, :] = np.array([h[0,0]**2, 2*h[0,0]*h[1,0], 2*h[0,0]*h[2,0], h[1,0]**2, 2*h[1,0]*h[2,0], h[2,0]**2])
+        A[2*i, :] -= np.array([h[0,1]**2, 2*h[0,1]*h[1,1] , 2*h[0,1]*h[2,1], h[1,1]**2, 2*h[1,1]*h[2,1], h[2,1]**2])
+    
+    u,s,vt = np.linalg.svd(A);
+    # linalg gives the v matrix transposed
+    # we need to transpose it again to obtian x in the last column
+    v = np.transpose(vt)
+    x = v[:,5]# last colum of the v
+
+    w = np.zeros([3,3])
+    w[0,:] = np.asarray([x[0],x[1],x[2]])
+    w[1,:] = np.asarray([x[1],x[3],x[4]])
+    w[2,:] = np.asarray([x[2],x[4],x[5]])
+
+    # normalize by dividing all components by the last one
+    w /= w[2,2]
+
+    return w
+
+
+def compute_K(w):
+    w_inv = np.linalg.inv(w)
+    L = np.linalg.cholesky(w_inv)
+    K = L.T
+    return K
