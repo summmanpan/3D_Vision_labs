@@ -1,0 +1,224 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Lab 6: Sructure from motion\n",
+    "\n",
+    "## Goals\n",
+    "The goal of the current assignment is to learn the following concepts:\n",
+    "\n",
+    "- How to self-calibrate a camera using vanishing points.\n",
+    "- What are the main elements of an incremental structure from motion approach.\n",
+    "\n",
+    "## Introduction\n",
+    "\n",
+    "The Structure fron Motion problem (SfM) is defined as the 3D reconstruction from a set of unordered and uncalibrated images. There are different SfM approaches: global, hierarchical or incremental. In this lab we will focus on the incremental SfM, which is the most popular strategy for 3D reconstruction from unordered and uncalibrated photo collections.\n",
+    "\n",
+    "Incremental SfM is a sequential processing pipeline with an iterative component. It starts working from two views, from which motion (camera parameters) are initialized, and then the structure (3D reconstruction) is also initialized. Right after, an iterative extension of both the motion and the structure is performed, progressively adding new cameras/views and 3D points. A further refinement of both the camera matrices and the reconstructed point cloud is carried out. This last step is known as Bundle Adjustment and it involves solving an optimization problem by iterative techniques.\n",
+    "\n",
+    "The purpose of this lab is to familiarize with the structure from motion problem and work with the main blocks that constitute a basic (vanilla) incremental SfM algorithm, without the refinement step. A more complete and robust SfM pipeline would include -- a part from the bundle adjustment --  a carefully selection of the two initial views and each next new view to incorporate, filtering of outliers,  and some other tricks [3]. If you are interested in a more complete solution here we provide a list of some of the most known libraries and softwares:\n",
+    "\n",
+    "- OpenMVG:  http://openmvg.readthedocs.io/en/latest/# <br>\n",
+    "Incremental and global SfM, open source.\n",
+    "\n",
+    "- VisualSFM:  http://ccwu.me/vsfm/ <br>\n",
+    "Incremental SfM, very efficient, GUI, binaries.\n",
+    "\n",
+    "- Bundler: http://www.cs.cornell.edu/~snavely/bundler/ <br>\n",
+    "Incremental SfM, open source.\n",
+    "\n",
+    "- Colmap: http://colmap.github.io/ <br>\n",
+    "Incremental SfM, very efficient, nice GUI, open source.\n",
+    "\n",
+    "- Theia: http://www.theia-sfm.org/ <br>\n",
+    "Incremental and Global SfM, very efficient, open source.\n",
+    "\n",
+    "The solution of the structure from motion strongly relies on point correspondences (matchings) across the different views, commonly known as feature tracks. Then, one of the first things to do is feature extraction and matching, followed by geometric verification to remove outliers. \n",
+    "\n",
+    "As in previous labs, we will be using ORB / SIFT for estimating keypoints and matchings between pairs of images.  These matchings will contain outliers; these can be filtered by robustly estimating a fundamental matrix. Moreover, the fundamental matrix that relates the two initial views will be used to estimate the camera parameters (motion) of these two views.\n",
+    "\n",
+    "**Q1.** Robustly estimate the fundamental matrix (F) that relates views 1 and 2, and views 1 and 3. To compute F use the python function cv2.findFundamentalMat, take a close look at the documentation before using it (which are the inputs and what dimesion they should have). For each case, display the inlier matchings together with the pair of images.\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import cv2\n",
+    "\n",
+    "# Read images\n",
+    "img1 = cv2.imread('images/eview1.jpg',cv2.IMREAD_GRAYSCALE)\n",
+    "img2 = cv2.imread('images/eview3.jpg',cv2.IMREAD_GRAYSCALE)\n",
+    "img3 = cv2.imread('images/eview2.jpg',cv2.IMREAD_GRAYSCALE)\n",
+    "\n",
+    "# Reduce image size to speed up computations\n",
+    "scale_percent = 50\n",
+    "width = int(img1.shape[1] * scale_percent / 100)\n",
+    "height = int(img1.shape[0] * scale_percent / 100)\n",
+    "dsize = (width, height)\n",
+    "img1r = cv2.resize(img1, dsize)\n",
+    "img2r = cv2.resize(img2, dsize)\n",
+    "img3r = cv2.resize(img3, dsize)\n",
+    "\n",
+    "# complete ..."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Initial two-view reconstruction and self-calibration\n",
+    "In lab 5 we saw how to recover the motion between a pair of calibrated cameras. In SfM cameras are not calibrated, but different self-calibration techniques can be applied for estimating the intrinsic parameters.\n",
+    " \n",
+    "In case we work with images of man-made environments, like urban or indoor scenes, it is possible to estimate vanishing points of orthogonal directions. Vanishing points are useful for self-calibration because they allow us to establish constraints on the internal parameters of the camera (intrinsics). There are different methods in the literature to estimate vanishing points. For example, the following ones are implemented in Matlab:\n",
+    "\n",
+    "- Vanishing Point Detection in Urban Scenes Using Point Alignments [1, 2]: <br>\n",
+    "http://www.ipol.im/pub/art/2017/148/\n",
+    "\n",
+    "- Orthogonal Vanishing Points in Uncalibrated Images of Man-Made Environments [4]: <br>\n",
+    "https://members.loria.fr/GSimon/software/fastvp/\n",
+    "\n",
+    "And this other one in Python:\n",
+    "- NeurVPS: Neural Vanishing Point Scanning via Conic Convolution: [6] <br>\n",
+    "https://github.com/zhou13/neurvps\n",
+    "\n",
+    "We will assume square pixels (aspect ratio of 1), zero skew factor and principal point at the center of the image, which is common in most commercial cameras.  Then, the only remaining unknown in the matrix of internal parameters is the focal length $\\alpha$, but it can be estimated using a pair of vanishing points as we will explain now (see also Section 6.3.2 of Szeliski's book [5]). \n",
+    "\n",
+    "Under the previous assumptions, the camera calibration matrix, $K$, can be written as: <br>\n",
+    "$$ K=\\begin{pmatrix} \\alpha & 0 & c_x \\\\ 0 & \\alpha & c_y \\\\ 0 & 0 & 1\\end{pmatrix}$$\n",
+    "where the only unknown is $\\alpha$, since $c_x = \\frac{w}{2}$ and $c_y = \\frac{h}{2}$, being $w$ and $h$, respectively, the image width and height in pixels. \n",
+    "\n",
+    "Let us assume that we have detected two or more orthogonal vanishing points, all of which are finite, i.e., they are not obtained from lines that appear to be parallel in the image plane. The projection equation for the vanishing point $\\mathbf{v}_1$ corresponding to the cardinal direction $(1, 0, 0)^T$ can be written as\n",
+    "$$ \\mathbf{v}_1 \\sim K  \\begin{pmatrix}\\mathbf{r}_1 & \\mathbf{r}_2 & \\mathbf{r}_3 & \\mathbf{t} \\end{pmatrix} \\begin{pmatrix} 1 \\\\ 0 \\\\ 0 \\\\ 0 \\end{pmatrix} = K \\mathbf{r}_1$$\n",
+    "If we denote the coordinates of the vanishing point $\\mathbf{v}_1$ as $x_1$ and $y_1$ we have:\n",
+    "$$ \\mathbf{r}_1 \\sim K^{-1} \\mathbf{v}_1 = \\begin{pmatrix} 1/\\alpha & 0 & -c_x/\\alpha \\\\ 0 & 1/\\alpha & -c_y/\\alpha \\\\ 0 & 0 & 1 \\end{pmatrix} \n",
+    " \\begin{pmatrix} x_1 \\\\ y_1 \\\\ 1 \\end{pmatrix} = \n",
+    " \\begin{pmatrix} x_1 - c_x \\\\ y_1 -c_y \\\\ \\alpha \\end{pmatrix}$$\n",
+    "And in general, for the vanishing point $\\mathbf{v}_i$, $i=1,2,3$, corresponding to one of the cardinal directions (1, 0, 0), (0, 1, 0), or (0, 0, 1) respectively, and $\\mathbf{r}_i$ being the $i$th column of the rotation matrix $R$ we have:\n",
+    "$$ \\mathbf{r}_i \\sim  \\begin{pmatrix} x_i - c_x \\\\ y_i -c_y \\\\ \\alpha \\end{pmatrix}$$\n",
+    "From the orthogonality between columns of the rotation matrix, we have:\n",
+    "$$ \\mathbf{r}_i  \\cdot \\mathbf{r}_j = (x_i - c_x)(x_j - c_x)+(y_i - c_y)(y_j - c_y)+ \\alpha^2 =0, $$\n",
+    "from which we can obtain an estimate for $\\alpha$:\n",
+    "$$ \\alpha = \\sqrt{-(x_i - c_x)(x_j - c_x)-(y_i - c_y)(y_j - c_y)}.$$\n",
+    "Then, it is possible to estimate $\\alpha$, and thus $K$, using two vanishing points corresponding to orthogonal directions. In our case, all the images have been taken with the same camera, so all of them will share the same $K$.\n",
+    "\n",
+    "**Q2.** Provide the code to estimate the matrix of internal parameters following the previous directions. Which is the matrix you have obtained?"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# read vanishing points estimated by method [4] (second link above)\n",
+    "import scipy.io as sio\n",
+    "mat_content = sio.loadmat('./horizon_vp.mat')\n",
+    "vps=mat_content['horizon_vp']\n",
+    "\n",
+    "vps[0,:] # contains the coordinates of the 1st vanishing point\n",
+    "vps[1,:] # contains the coordinates of the 2nd vanishing point\n",
+    "\n",
+    "# complete ..."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "In the first part of the lab we have estimated the fundamental matrix $F$ that relates the initial pair of views. With $F$ and $K$ we can estimate the essential matrix $E$ and from it we can get the complete camera matrices (intrinsics and extrinsics) for the initial pair of views. Once the cameras are fully calibrated an initial 3D reconstruction (structure) is found by triangulation. Those steps were part of lab 4.\n",
+    "\n",
+    "\n",
+    "**Q3.** Estimate the camera matrices for views 1 and 2. \n",
+    "\n",
+    "**Q4.** Triangulate the matches from views 1 and 2 and plot them together with the cameras."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# complete ...\n",
+    "\n",
+    "# plot reconctructed points in colors\n",
+    "# plot camera 1 (reference camera) in black\n",
+    "# plot camera 2 in blue"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Estimate new camera pose from structure\n",
+    "\n",
+    "At this point we have reconstructed some 3D points from the point correspondences in the initial pair of views. If we are able to find a sufficient number of correspondences, in a new image, of the already reconstructed keypoints we will have a set of 3D-2D correspondences that can be used to calibrate the new view. For that, we will use the resectioning method (lecture 6) that needs  at least six 3D-2D correspondences. Alternatively, other methods, like P$n$P approaches can be used for this purpose (since all cameras share the same matrix $K$).\n",
+    "\n",
+    "**Q5.** Find the intersection matches between matches 1-2 and 1-3.\n",
+    "\n",
+    "**Q6.** Create the function `resectioning` to calibrate the 3rd view and establish the proper entries to the function.\n",
+    "\n",
+    "As optional tasks you can triangulate the matches from the 1st and 3rd view in order to add new 3D points in the point cloud. You can also add the 4th image, calibrate the 4th camera and add a new set of  3D points."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# complete ...\n",
+    "\n",
+    "# plot the reconstructed 3D points\n",
+    "# plot camera 1 (reference camera) in black\n",
+    "# plot camera 2 in blue\n",
+    "# plot camera 3 in red (normalize the projection matrix P3 dividing by P3[2,2])"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## References\n",
+    "\n",
+    "[1] José Lezama, Rafael Grompone von Gioi, Gregory Randall, and Jean-Michel Morel. Finding vanishing points via point alignments in image primal and dual domains. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pages 509–515, 2014.\n",
+    "\n",
+    "[2] José Lezama, Gregory Randall, and Rafael Grompone von Gioi. Vanishing Point Detection in Urban Scenes Using Point Alignments. Image Processing On Line, 7:131–164, 2017.\n",
+    "\n",
+    "[3] Johannes Lutz Schönberger and Jan-Michael Frahm. Structure-from-motion revisited. In Conference on Computer Vision and Pattern Recognition (CVPR), 2016.\n",
+    "\n",
+    "[4] Gilles Simon, Antoine Fond, and Marie-Odile Berger. A simple and effective method to detect orthogonal vanishing points in uncalibrated images of man-made environments. In Eurographics, 2016.\n",
+    "\n",
+    "[5] Richard Szeliski. Computer vision: algorithms and applications. Springer Science & Business Media, 2010.\n",
+    "\n",
+    "[6] Yichao Zhou, Haozhi Qi, Jingwei Huang, and Yi Ma. Neurvps: Neural vanishing point scanning via conic convolution. NeurIPS 2019. "
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.8.3"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
